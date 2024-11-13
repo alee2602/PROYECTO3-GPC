@@ -12,6 +12,8 @@ mod obj;
 mod shaders;
 mod triangle;
 mod vertex;
+mod texture;
+mod ray_intersect;
 
 use camera::Camera;
 use color::Color;
@@ -20,6 +22,8 @@ use framebuffer::Framebuffer;
 use obj::Obj;
 use shaders::{fragment_shader, vertex_shader, ShaderType};
 use vertex::Vertex;
+use crate::texture::Texture;
+use ray_intersect::{Sphere, RayIntersect};
 
 pub struct Uniforms {
     model_matrix: Mat4,
@@ -65,6 +69,32 @@ fn create_viewport_matrix(width: f32, height: f32) -> Mat4 {
         0.0,
         1.0,
     )
+}
+
+fn render_skybox(framebuffer: &mut Framebuffer, camera: &Camera, skybox_texture: &Texture, uniforms: &Uniforms) {
+    let width = framebuffer.width as f32;
+    let height = framebuffer.height as f32;
+
+    // Usar una esfera más grande para el skybox y asegurar que está detrás de todo
+    let sky_sphere = Sphere::new(camera.eye, 2000.0); // Radio más grande
+
+    for y in 0..framebuffer.height {
+        for x in 0..framebuffer.width {
+            let ndc_x = (x as f32 / width) * 2.0 - 1.0;
+            let ndc_y = 1.0 - (y as f32 / height) * 2.0;
+            let ray_dir = uniforms.projection_matrix * Vec4::new(ndc_x, ndc_y, 1.0, 0.0);
+            let ray_direction = (ray_dir.xyz()).normalize();
+
+            let intersect = sky_sphere.ray_intersect(&camera.eye, &ray_direction);
+
+            if intersect.hit {
+                let color = skybox_texture.get_color(intersect.uv.0, intersect.uv.1);
+                framebuffer.set_current_color(color.to_hex());
+                // Usar la máxima profundidad posible para el skybox
+                framebuffer.point(x, y, f32::MAX);
+            }
+        }
+    }
 }
 
 fn render(
@@ -280,6 +310,8 @@ fn main() {
     let rotation_speed = 0.05;
     let zoom_speed = 2.0;
 
+    let skybox_texture = Texture::new("assets/textures/sky.jpg");
+
     let mut time = 0;
 
     while window.is_open() {
@@ -330,8 +362,12 @@ fn main() {
 
         time += 1;
         framebuffer.clear();
+        for z in framebuffer.zbuffer.iter_mut() {
+            *z = f32::INFINITY;
+        }
 
-        // Base uniforms para las órbitas
+
+        // Renderizar el skybox primero
         let base_uniforms = Uniforms {
             model_matrix: Mat4::identity(),
             view_matrix,
@@ -340,6 +376,8 @@ fn main() {
             time,
             noise: fastnoise_lite::FastNoiseLite::new(),
         };
+
+        render_skybox(&mut framebuffer, &camera, &skybox_texture, &base_uniforms);
 
         let sun_rotation_speed = 0.0001; 
         let sun_rotation = time as f32 * sun_rotation_speed;
