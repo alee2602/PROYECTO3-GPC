@@ -18,6 +18,7 @@ impl Camera {
         }
     }
 
+    // Rotación en órbita (ya lo tienes)
     pub fn orbit(&mut self, delta_yaw: f32, delta_pitch: f32) {
         let radius_vector = self.eye - self.center;
         let radius = radius_vector.magnitude();
@@ -42,26 +43,24 @@ impl Camera {
         self.has_changed = true;
     }
 
+    // Movimiento vertical en el eje Y
+    pub fn move_vertical(&mut self, delta: f32) {
+        self.eye.y += delta;
+        self.center.y += delta;
+        self.has_changed = true;
+    }
+
+    // Movimiento en el plano horizontal (XZ)
+    pub fn move_center(&mut self, direction: Vec3) {
+        self.center += direction;
+        self.eye += direction;
+        self.has_changed = true;
+    }
+
+    // Zoom hacia adelante y atrás
     pub fn zoom(&mut self, delta: f32) {
         let direction = (self.center - self.eye).normalize();
         self.eye += direction * delta;
         self.has_changed = true;
     }
-
-    pub fn move_center(&mut self, direction: Vec3) {
-        let radius_vector = self.center - self.eye;
-        let radius = radius_vector.magnitude();
-
-        let angle_x = direction.x * 0.05; // Adjust this factor to control rotation speed
-        let angle_y = direction.y * 0.05;
-
-        let rotated = rotate_vec3(&radius_vector, angle_x, &Vec3::new(0.0, 1.0, 0.0));
-
-        let right = rotated.cross(&self.up).normalize();
-        let final_rotated = rotate_vec3(&rotated, angle_y, &right);
-
-        self.center = self.eye + final_rotated.normalize() * radius;
-        self.has_changed = true;
-    }
-
 }

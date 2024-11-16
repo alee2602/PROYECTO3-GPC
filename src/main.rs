@@ -309,6 +309,8 @@ fn main() {
     let camera_speed = 1.0;
     let rotation_speed = 0.05;
     let zoom_speed = 2.0;
+    let vertical_speed = 1.0;
+
 
     let skybox_texture = Texture::new("assets/textures/sky.jpg");
 
@@ -319,55 +321,63 @@ fn main() {
             break;
         }
 
-        let mut movement = Vec3::new(0.0, 0.0, 0.0);
-        if window.is_key_down(Key::W) {
-            movement.z -= camera_speed;
-        }
-        if window.is_key_down(Key::S) {
-            movement.z += camera_speed;
-        }
-        if window.is_key_down(Key::A) {
-            movement.x -= camera_speed;
-        }
-        if window.is_key_down(Key::D) {
-            movement.x += camera_speed;
-        }
-        if movement.magnitude() > 0.0 {
-            camera.move_center(movement);
-        }
+    // Movimiento en el plano horizontal (XZ)
+    let mut movement = Vec3::new(0.0, 0.0, 0.0);
+    if window.is_key_down(Key::W) {
+        movement.z -= camera_speed;
+    }
+    if window.is_key_down(Key::S) {
+        movement.z += camera_speed;
+    }
+    if window.is_key_down(Key::A) {
+        movement.x -= camera_speed;
+    }
+    if window.is_key_down(Key::D) {
+        movement.x += camera_speed;
+    }
+    if movement.magnitude() > 0.0 {
+        camera.move_center(movement);
+    }
 
-        // Rotación de la cámara
-        if window.is_key_down(Key::Left) {
-            camera.orbit(-rotation_speed, 0.0);
-        }
-        if window.is_key_down(Key::Right) {
-            camera.orbit(rotation_speed, 0.0);
-        }
-        if window.is_key_down(Key::Up) {
-            camera.orbit(0.0, rotation_speed);
-        }
-        if window.is_key_down(Key::Down) {
-            camera.orbit(0.0, -rotation_speed);
-        }
+    // Movimiento vertical en el eje Y
+    if window.is_key_down(Key::R) {
+        camera.move_vertical(vertical_speed);
+    }
+    if window.is_key_down(Key::F) {
+        camera.move_vertical(-vertical_speed);
+    }
 
-        // Zoom
-        if window.is_key_down(Key::Q) {
-            camera.zoom(-zoom_speed);
-        }
-        if window.is_key_down(Key::E) {
-            camera.zoom(zoom_speed);
-        }
+    // Rotación de la cámara 
+    if window.is_key_down(Key::Left) {
+        camera.orbit(-rotation_speed, 0.0);
+    }
+    if window.is_key_down(Key::Right) {
+        camera.orbit(rotation_speed, 0.0);
+    }
+    if window.is_key_down(Key::Up) {
+        camera.orbit(0.0, -rotation_speed);
+    }
+    if window.is_key_down(Key::Down) {
+        camera.orbit(0.0, rotation_speed);
+    }
 
-        let view_matrix = look_at(&camera.eye, &camera.center, &camera.up);
+    // Zoom
+    if window.is_key_down(Key::Q) {
+        camera.zoom(-zoom_speed);
+    }
+    if window.is_key_down(Key::E) {
+        camera.zoom(zoom_speed);
+    }
 
-        time += 1;
-        framebuffer.clear();
+    let view_matrix = look_at(&camera.eye, &camera.center, &camera.up);
+
+    time += 1;
+    framebuffer.clear();
         for z in framebuffer.zbuffer.iter_mut() {
             *z = f32::INFINITY;
         }
 
-
-        // Renderizar el skybox primero
+        // Renderizar el skybox 
         let base_uniforms = Uniforms {
             model_matrix: Mat4::identity(),
             view_matrix,
