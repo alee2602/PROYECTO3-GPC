@@ -1,5 +1,5 @@
 use minifb::{Key, Window, WindowOptions};
-use nalgebra_glm::{look_at, perspective, Mat4,Vec3, Vec4};
+use nalgebra_glm::{look_at, perspective, Mat4, Vec3, Vec4};
 use std::f32::consts::PI;
 use std::time::Duration;
 
@@ -9,21 +9,21 @@ mod fragment;
 mod framebuffer;
 mod line;
 mod obj;
+mod ray_intersect;
 mod shaders;
+mod texture;
 mod triangle;
 mod vertex;
-mod texture;
-mod ray_intersect;
 
+use crate::texture::Texture;
 use camera::Camera;
 use color::Color;
 use fastnoise_lite::FastNoiseLite;
 use framebuffer::Framebuffer;
 use obj::Obj;
+use ray_intersect::{RayIntersect, Sphere};
 use shaders::{fragment_shader, vertex_shader, ShaderType};
 use vertex::Vertex;
-use crate::texture::Texture;
-use ray_intersect::{Sphere, RayIntersect};
 
 pub struct Uniforms {
     model_matrix: Mat4,
@@ -35,9 +35,9 @@ pub struct Uniforms {
 }
 
 fn create_model_matrix(translation: Vec3, scale: f32, rotation_angle: f32) -> Mat4 {
-    Mat4::new_translation(&translation) * 
-    Mat4::from_axis_angle(&Vec3::y_axis(), rotation_angle) * 
-    Mat4::new_scaling(scale)
+    Mat4::new_translation(&translation)
+        * Mat4::from_axis_angle(&Vec3::y_axis(), rotation_angle)
+        * Mat4::new_scaling(scale)
 }
 
 fn create_view_matrix(eye: Vec3, center: Vec3, up: Vec3) -> Mat4 {
@@ -71,7 +71,12 @@ fn create_viewport_matrix(width: f32, height: f32) -> Mat4 {
     )
 }
 
-fn render_skybox(framebuffer: &mut Framebuffer, camera: &Camera, skybox_texture: &Texture, uniforms: &Uniforms) {
+fn render_skybox(
+    framebuffer: &mut Framebuffer,
+    camera: &Camera,
+    skybox_texture: &Texture,
+    uniforms: &Uniforms,
+) {
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
 
@@ -137,12 +142,53 @@ fn render(
     }
 }
 
+fn line_with_depth(
+    framebuffer: &mut Framebuffer,
+    x1: usize,
+    y1: usize,
+    x2: usize,
+    y2: usize,
+    z1: f32,
+    z2: f32,
+) {
+    let dx = (x2 as i32) - (x1 as i32);
+    let dy = (y2 as i32) - (y1 as i32);
+
+    let steps = dx.abs().max(dy.abs());
+    if steps == 0 {
+        return;
+    }
+
+    let x_inc = dx as f32 / steps as f32;
+    let y_inc = dy as f32 / steps as f32;
+    let z_inc = (z2 - z1) / steps as f32;
+
+    let mut x = x1 as f32;
+    let mut y = y1 as f32;
+    let mut z = z1;
+
+    for _ in 0..=steps {
+        let px = x as usize;
+        let py = y as usize;
+
+        if px < framebuffer.width && py < framebuffer.height {
+            framebuffer.point(px, py, z);
+        }
+
+        x += x_inc;
+        y += y_inc;
+        z += z_inc;
+    }
+}
+
 fn line_with_thickness(
     framebuffer: &mut Framebuffer,
     x1: usize,
     y1: usize,
     x2: usize,
     y2: usize,
+    z1: f32,
+    z2: f32,
     thickness: f32,
 ) {
     let dx = (x2 as f32) - (x1 as f32);
@@ -157,7 +203,8 @@ fn line_with_thickness(
     let dx = dx / distance;
     let dy = dy / distance;
 
-    framebuffer.line(x1, y1, x2, y2);
+    // Dibujar la línea principal
+    line_with_depth(framebuffer, x1, y1, x2, y2, z1, z2);
 
     // Para líneas muy delgadas, solo se dibuja la línea principal
     if thickness <= 1.0 {
@@ -181,7 +228,15 @@ fn line_with_thickness(
             && x2_offset < framebuffer.width
             && y2_offset < framebuffer.height
         {
-            framebuffer.line(x1_offset, y1_offset, x2_offset, y2_offset);
+            line_with_depth(
+                framebuffer,
+                x1_offset,
+                y1_offset,
+                x2_offset,
+                y2_offset,
+                z1,
+                z2,
+            );
         }
 
         let x1_offset = (x1 as f32 - perpx) as usize;
@@ -194,7 +249,15 @@ fn line_with_thickness(
             && x2_offset < framebuffer.width
             && y2_offset < framebuffer.height
         {
-            framebuffer.line(x1_offset, y1_offset, x2_offset, y2_offset);
+            line_with_depth(
+                framebuffer,
+                x1_offset,
+                y1_offset,
+                x2_offset,
+                y2_offset,
+                z1,
+                z2,
+            );
         }
     }
 }
@@ -215,13 +278,13 @@ fn render_orbit_lines(
         // Posiciones en el espacio 3D
         let world_pos1 = Vec4::new(
             orbit_radius * angle1.cos(),
-            0.0,
+            -0.01,
             orbit_radius * angle1.sin(),
             1.0,
         );
         let world_pos2 = Vec4::new(
             orbit_radius * angle2.cos(),
-            0.0,
+            -0.02,
             orbit_radius * angle2.sin(),
             1.0,
         );
@@ -256,7 +319,17 @@ fn render_orbit_lines(
             && screen_x2 < framebuffer.width
             && screen_y2 < framebuffer.height
         {
-            line_with_thickness(framebuffer, screen_x1, screen_y1, screen_x2, screen_y2, 0.001);
+            // Usar los valores z de NDC para la profundidad
+            line_with_thickness(
+                framebuffer,
+                screen_x1,
+                screen_y1,
+                screen_x2,
+                screen_y2,
+                ndc_pos1.z,
+                ndc_pos2.z,
+                0.001,
+            );
         }
     }
 }
@@ -285,6 +358,9 @@ fn main() {
     let obj_moon = Obj::load("assets/models/moon.obj").expect("Failed to load moon.obj");
     let vertex_arrays_moon = obj_moon.get_vertex_array();
 
+    let obj_ship = Obj::load("assets/models/spaceship.obj").expect("Failed to load spaceship.obj");
+    let vertex_arrays_ship = obj_ship.get_vertex_array();
+
     let mut camera = Camera::new(
         Vec3::new(0.0, 100.0, 100.0),
         Vec3::new(0.0, 0.0, 0.0),
@@ -296,7 +372,7 @@ fn main() {
         create_viewport_matrix(framebuffer_width as f32, framebuffer_height as f32);
 
     let orbital_radii = vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0];
-    let orbital_speeds = vec![0.005,0.005, 0.005, 0.005, 0.005, 0.005];
+    let orbital_speeds = vec![0.008, 0.006, 0.005, 0.004, 0.003, 0.002];
     let shaders = vec![
         ShaderType::RockyPlanet,
         ShaderType::RockyPlanetVariant,
@@ -305,12 +381,11 @@ fn main() {
         ShaderType::AlienPlanet,
         ShaderType::GlacialTextured,
     ];
-     // Variables para controlar la cámara
+    // Variables para controlar la cámara
     let camera_speed = 1.0;
     let rotation_speed = 0.05;
     let zoom_speed = 2.0;
     let vertical_speed = 1.0;
-
 
     let skybox_texture = Texture::new("assets/textures/sky.jpg");
 
@@ -321,63 +396,63 @@ fn main() {
             break;
         }
 
-    // Movimiento en el plano horizontal (XZ)
-    let mut movement = Vec3::new(0.0, 0.0, 0.0);
-    if window.is_key_down(Key::W) {
-        movement.z -= camera_speed;
-    }
-    if window.is_key_down(Key::S) {
-        movement.z += camera_speed;
-    }
-    if window.is_key_down(Key::A) {
-        movement.x -= camera_speed;
-    }
-    if window.is_key_down(Key::D) {
-        movement.x += camera_speed;
-    }
-    if movement.magnitude() > 0.0 {
-        camera.move_center(movement);
-    }
+        // Movimiento en el plano horizontal (XZ)
+        let mut movement = Vec3::new(0.0, 0.0, 0.0);
+        if window.is_key_down(Key::W) {
+            movement.z -= camera_speed;
+        }
+        if window.is_key_down(Key::S) {
+            movement.z += camera_speed;
+        }
+        if window.is_key_down(Key::A) {
+            movement.x -= camera_speed;
+        }
+        if window.is_key_down(Key::D) {
+            movement.x += camera_speed;
+        }
+        if movement.magnitude() > 0.0 {
+            camera.move_center(movement);
+        }
 
-    // Movimiento vertical en el eje Y
-    if window.is_key_down(Key::R) {
-        camera.move_vertical(vertical_speed);
-    }
-    if window.is_key_down(Key::F) {
-        camera.move_vertical(-vertical_speed);
-    }
+        // Movimiento vertical en el eje Y
+        if window.is_key_down(Key::R) {
+            camera.move_vertical(vertical_speed);
+        }
+        if window.is_key_down(Key::F) {
+            camera.move_vertical(-vertical_speed);
+        }
 
-    // Rotación de la cámara 
-    if window.is_key_down(Key::Left) {
-        camera.orbit(-rotation_speed, 0.0);
-    }
-    if window.is_key_down(Key::Right) {
-        camera.orbit(rotation_speed, 0.0);
-    }
-    if window.is_key_down(Key::Up) {
-        camera.orbit(0.0, -rotation_speed);
-    }
-    if window.is_key_down(Key::Down) {
-        camera.orbit(0.0, rotation_speed);
-    }
+        // Rotación de la cámara
+        if window.is_key_down(Key::Left) {
+            camera.orbit(-rotation_speed, 0.0);
+        }
+        if window.is_key_down(Key::Right) {
+            camera.orbit(rotation_speed, 0.0);
+        }
+        if window.is_key_down(Key::Up) {
+            camera.orbit(0.0, -rotation_speed);
+        }
+        if window.is_key_down(Key::Down) {
+            camera.orbit(0.0, rotation_speed);
+        }
 
-    // Zoom
-    if window.is_key_down(Key::Q) {
-        camera.zoom(-zoom_speed);
-    }
-    if window.is_key_down(Key::E) {
-        camera.zoom(zoom_speed);
-    }
+        // Zoom
+        if window.is_key_down(Key::Q) {
+            camera.zoom(-zoom_speed);
+        }
+        if window.is_key_down(Key::E) {
+            camera.zoom(zoom_speed);
+        }
 
-    let view_matrix = look_at(&camera.eye, &camera.center, &camera.up);
+        let view_matrix = look_at(&camera.eye, &camera.center, &camera.up);
 
-    time += 1;
-    framebuffer.clear();
+        time += 1;
+        framebuffer.clear();
         for z in framebuffer.zbuffer.iter_mut() {
             *z = f32::INFINITY;
         }
 
-        // Renderizar el skybox 
+        // Renderizar el skybox
         let base_uniforms = Uniforms {
             model_matrix: Mat4::identity(),
             view_matrix,
@@ -389,12 +464,31 @@ fn main() {
 
         render_skybox(&mut framebuffer, &camera, &skybox_texture, &base_uniforms);
 
-        let sun_rotation_speed = 0.0001; 
+        let ship_offset = 15.0;
+        let ship_position = camera.eye + (camera.center - camera.eye).normalize() * ship_offset;
+        let ship_rotation_angle = std::f32::consts::PI;
+
+        let ship_uniforms = Uniforms {
+            model_matrix: create_model_matrix(ship_position, 0.1, ship_rotation_angle),
+            view_matrix,
+            projection_matrix,
+            viewport_matrix,
+            time,
+            noise: fastnoise_lite::FastNoiseLite::new(),
+        };
+        render(
+            &mut framebuffer,
+            &ship_uniforms,
+            &vertex_arrays_ship,
+            &ShaderType::Spaceship,
+        );
+
+        let sun_rotation_speed = 0.0001;
         let sun_rotation = time as f32 * sun_rotation_speed;
 
-        // Renderizado del sol 
+        // Renderizado del sol
         let sun_uniforms = Uniforms {
-            model_matrix: create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 1.0, sun_rotation),
+            model_matrix: create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 4.0, sun_rotation),
             view_matrix,
             projection_matrix,
             viewport_matrix,
@@ -407,34 +501,43 @@ fn main() {
             &vertex_arrays_sphere,
             &ShaderType::Solar,
         );
-        
-        // Renderizado de las órbitas y planetas
+
+        let orbit_visibility_threshold = 10.0;
+
+
         for (i, &radio) in orbital_radii.iter().enumerate() {
-            render_orbit_lines(
-                &mut framebuffer,
-                radio,
-                Color::new(128, 128, 128),
-                150,
-                &base_uniforms,
-            );
-        
+            let distance_to_camera = (camera.eye - Vec3::new(0.0, 0.0, 0.0)).magnitude();
+
+            // Renderiza las órbitas solo si la cámara está lejos
+            if distance_to_camera > radio + orbit_visibility_threshold {
+                render_orbit_lines(
+                    &mut framebuffer,
+                    radio,
+                    Color::new(128, 128, 128),
+                    150,
+                    &base_uniforms,
+                );
+            }
+
             let orbital_speed = orbital_speeds[i];
             let planet_x = radio * (time as f32 * orbital_speed).cos();
             let planet_z = radio * (time as f32 * orbital_speed).sin();
             let planet_position = Vec3::new(planet_x, 0.0, planet_z);
 
-            let speeds_rotation = vec![0.02, 0.015, 0.025, 0.018, 0.022, 0.016]; 
+            let planet_scales = vec![1.5, 1.7, 2.5, 3.5, 2.8, 3.3];
+            let planet_scale = planet_scales[i];
+            let speeds_rotation = vec![0.015, 0.015, 0.025, 0.018, 0.018, 0.016];
             let planet_rotation = time as f32 * speeds_rotation[i];
-        
+
             let planet_uniforms = Uniforms {
-                model_matrix: create_model_matrix(planet_position, 1.0, planet_rotation),
+                model_matrix: create_model_matrix(planet_position, planet_scale, planet_rotation),
                 view_matrix,
                 projection_matrix,
                 viewport_matrix,
                 time,
                 noise: fastnoise_lite::FastNoiseLite::new(),
             };
-        
+
             render(
                 &mut framebuffer,
                 &planet_uniforms,
@@ -455,7 +558,7 @@ fn main() {
                 let moon_rotation = time as f32 * moon_rotation_speed;
 
                 let moon_uniforms = Uniforms {
-                    model_matrix: create_model_matrix(moon_position, 0.3, moon_rotation),
+                    model_matrix: create_model_matrix(moon_position, 0.5, moon_rotation),
                     view_matrix,
                     projection_matrix,
                     viewport_matrix,

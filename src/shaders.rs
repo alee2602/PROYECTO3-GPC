@@ -5,7 +5,7 @@ use crate::Uniforms;
 use nalgebra_glm::{mat4_to_mat3, Mat3, Vec3, Vec4};
 use rand::Rng;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum ShaderType {
     GasGiant,
     ColdGasGiant,
@@ -14,7 +14,8 @@ pub enum ShaderType {
     RockyPlanetVariant,
     AlienPlanet,
     GlacialTextured,
-    Moon
+    Moon,
+    Spaceship
 }
 
 pub fn vertex_shader(vertex: &Vertex, uniforms: &Uniforms) -> Vertex {
@@ -56,8 +57,30 @@ pub fn fragment_shader(fragment: &Fragment, uniforms: &Uniforms, shader_type: &S
         ShaderType::RockyPlanetVariant => rocky_planet_variant_shader(fragment, uniforms),
         ShaderType::AlienPlanet => alien_planet_shader(fragment, uniforms),
         ShaderType::GlacialTextured => glacial_textured_shader(fragment, uniforms),
-        ShaderType::Moon => moon_shader(fragment, uniforms)
+        ShaderType::Moon => moon_shader(fragment, uniforms),
+        ShaderType::Spaceship => blue_shader(fragment, uniforms)
     }
+}
+
+pub fn blue_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
+    let base_blue = Color::new(30, 30, 100); // Azul oscuro base
+    let highlight_blue = Color::new(70, 130, 180); // Azul claro para iluminación
+    let shadow_black = Color::new(0, 0, 0); // Negro para sombras
+
+    // Gradiente basado en la altura
+    let gradient_factor = (fragment.position.y / 10.0).clamp(0.0, 1.0);
+
+    // Oscilación temporal para dinamismo
+    let time_factor = ((uniforms.time as f32 * 0.01).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
+
+    // Brillo suave basado en la normal del fragmento
+    let brightness = fragment.normal.y.abs().clamp(0.0, 1.0);
+
+    // Mezcla de colores: gradiente, sombras, y oscilaciones dinámicas
+    base_blue
+        .lerp(&highlight_blue, gradient_factor) // Gradiente altura
+        .lerp(&shadow_black, 1.0 - brightness) // Sombras según la normal
+        .lerp(&Color::new(50, 50, 100), time_factor * 0.2) // Efecto dinámico
 }
 
 pub fn moon_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
