@@ -2,6 +2,9 @@ use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{look_at, perspective, Mat4, Vec3, Vec4};
 use std::f32::consts::PI;
 use std::time::Duration;
+use rodio::{source::Source, Decoder, OutputStream, Sink};
+use std::fs::File;
+use std::io::BufReader;
 
 mod camera;
 mod color;
@@ -71,7 +74,7 @@ fn create_model_matrix(translation: Vec3, scale: f32, rotation_angle: f32) -> Ma
 }
 
 fn create_perspective_matrix(window_width: f32, window_height: f32) -> Mat4 {
-    let fov = 60.0 * PI / 180.0;
+    let fov = 75.0 * PI / 180.0;
     let aspect_ratio = window_width / window_height;
     perspective(fov, aspect_ratio, 0.1, 1000.0)
 }
@@ -374,6 +377,17 @@ fn render_orbit_lines(
 }
 
 fn main() {
+    let (_stream, stream_handle) =
+        OutputStream::try_default().expect("No se pudo inicializar el stream de audio.");
+    let sink = Sink::try_new(&stream_handle).expect("No se pudo crear el sink de audio.");
+
+    let file = File::open("assets/audio/ewtrtw.wav").expect("No se pudo abrir el archivo de música.");
+    let source =
+        Decoder::new(BufReader::new(file)).expect("No se pudo decodificar el archivo de música.");
+
+    sink.append(source.repeat_infinite());
+    sink.play();
+
     let window_width = 1000;
     let window_height = 800;
     let framebuffer_width = 1000;
@@ -411,7 +425,7 @@ fn main() {
         create_viewport_matrix(framebuffer_width as f32, framebuffer_height as f32);
 
     let orbital_radii = vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0];
-    let orbital_speeds = vec![0.008, 0.006, 0.005, 0.004, 0.003, 0.002];
+    let orbital_speeds = vec![0.04, 0.02, 0.01, 0.009, 0.008, 0.007];
     let shaders = vec![
         ShaderType::RockyPlanet,
         ShaderType::RockyPlanetVariant,
@@ -599,7 +613,7 @@ fn main() {
 
         // Renderizado del sol
         let sun_uniforms = Uniforms {
-            model_matrix: create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 4.0, sun_rotation),
+            model_matrix: create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 5.0, sun_rotation),
             view_matrix,
             projection_matrix,
             viewport_matrix,
@@ -629,7 +643,9 @@ fn main() {
             let planet_scales = vec![1.5, 1.7, 2.5, 3.5, 2.8, 3.3];
             let planet_scale = planet_scales[i];
             let speeds_rotation = vec![0.015, 0.015, 0.025, 0.018, 0.018, 0.016];
-            let planet_rotation = time as f32 * speeds_rotation[i];
+            let to_sun = Vec3::new(0.0, 0.0, 0.0) - planet_position; // Vector al Sol
+            let alignment_angle = to_sun.normalize().dot(&Vec3::y_axis());
+            let planet_rotation = alignment_angle + (time as f32 * speeds_rotation[i]);
 
             // Verificar si el planeta está en el frustum
             if is_in_frustum(
@@ -681,7 +697,7 @@ fn main() {
                 // Renderizar luna solo para el primer planeta
                 if i == 0 {
                     let orbit_radius_moon = 2.0;
-                    let orbit_speed_moon = 0.01;
+                    let orbit_speed_moon = 0.09;
                     let moon_x = current_planet_x
                         + orbit_radius_moon * (time as f32 * orbit_speed_moon).cos();
                     let moon_z = current_planet_z
