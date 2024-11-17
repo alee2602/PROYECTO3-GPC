@@ -51,10 +51,10 @@ impl Camera {
     }
 
     // Movimiento en el plano horizontal (XZ)
-    pub fn move_center(&mut self, direction: Vec3) {
-        self.center += direction;
-        self.eye += direction;
-        self.has_changed = true;
+    pub fn move_center(&mut self, movement: Vec3) {
+        self.eye += movement;
+        self.center += movement;
+        self.up = Vec3::new(0.0, 1.0, 0.0); 
     }
 
     // Zoom hacia adelante y atrás

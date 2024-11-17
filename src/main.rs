@@ -34,14 +34,40 @@ pub struct Uniforms {
     noise: FastNoiseLite,
 }
 
+fn check_collision(position: &Vec3, target_position: &Vec3, radius: f32) -> bool {
+    let distance = (position - target_position).magnitude();
+    let safety_margin = 1.0;
+    let ship_size = 1.0;
+    distance < (radius * safety_margin + ship_size)
+}
+
+fn is_in_frustum(
+    position: &Vec3,
+    scale: f32,
+    view_matrix: &Mat4,
+    projection_matrix: &Mat4,
+) -> bool {
+    let world_pos = Vec4::new(position.x, position.y, position.z, 1.0);
+    let clip_space_pos = projection_matrix * view_matrix * world_pos;
+    let margin = scale * 1.5;
+
+    // Dividir por w para obtener coordenadas NDC
+    let w = clip_space_pos.w;
+    let ndc_x = clip_space_pos.x / w;
+    let ndc_y = clip_space_pos.y / w;
+    let ndc_z = clip_space_pos.z / w;
+
+    // Verificar si está dentro del frustum con el margen
+    ndc_x.abs() <= 1.0 + margin
+        && ndc_y.abs() <= 1.0 + margin
+        && ndc_z >= -1.0 - margin
+        && ndc_z <= 1.0 + margin
+}
+
 fn create_model_matrix(translation: Vec3, scale: f32, rotation_angle: f32) -> Mat4 {
     Mat4::new_translation(&translation)
         * Mat4::from_axis_angle(&Vec3::y_axis(), rotation_angle)
         * Mat4::new_scaling(scale)
-}
-
-fn create_view_matrix(eye: Vec3, center: Vec3, up: Vec3) -> Mat4 {
-    look_at(&eye, &center, &up)
 }
 
 fn create_perspective_matrix(window_width: f32, window_height: f32) -> Mat4 {
@@ -125,6 +151,13 @@ fn render(
         }
     }
 
+    // Ordenar triángulos por profundidad (back-to-front)
+    triangles.sort_by(|a, b| {
+        let z_a = (a[0].position.z + a[1].position.z + a[2].position.z) / 3.0;
+        let z_b = (b[0].position.z + b[1].position.z + b[2].position.z) / 3.0;
+        z_b.partial_cmp(&z_a).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
     let mut fragments = Vec::new();
     for tri in &triangles {
         fragments.extend(triangle::triangle(&tri[0], &tri[1], &tri[2]));
@@ -135,9 +168,15 @@ fn render(
         let y = fragment.position.y as usize;
 
         if x < framebuffer.width && y < framebuffer.height {
-            let shaded_color = fragment_shader(&fragment, uniforms, shader_type);
-            framebuffer.set_current_color(shaded_color.to_hex());
-            framebuffer.point(x, y, fragment.depth);
+            let z_index = y * framebuffer.width + x;
+
+            // Comprobar z-buffer con un pequeño bias
+            if fragment.depth <= framebuffer.zbuffer[z_index] + 0.0001 {
+                let shaded_color = fragment_shader(&fragment, uniforms, shader_type);
+                framebuffer.set_current_color(shaded_color.to_hex());
+                framebuffer.point(x, y, fragment.depth);
+                framebuffer.zbuffer[z_index] = fragment.depth;
+            }
         }
     }
 }
@@ -362,7 +401,7 @@ fn main() {
     let vertex_arrays_ship = obj_ship.get_vertex_array();
 
     let mut camera = Camera::new(
-        Vec3::new(0.0, 100.0, 100.0),
+        Vec3::new(0.0, 50.0, 150.0),
         Vec3::new(0.0, 0.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     );
@@ -390,10 +429,19 @@ fn main() {
     let skybox_texture = Texture::new("assets/textures/sky.jpg");
 
     let mut time = 0;
+    let planet_scales = vec![1.5, 1.7, 2.5, 3.5, 2.8, 3.3];
+    let mut planet_positions = vec![Vec3::zeros(); orbital_radii.len()];
 
     while window.is_open() {
         if window.is_key_down(Key::Escape) {
             break;
+        }
+
+        // Actualizar las posiciones de los planetas
+        for (i, &radius) in orbital_radii.iter().enumerate() {
+            let planet_x = radius * (time as f32 * orbital_speeds[i]).cos();
+            let planet_z = radius * (time as f32 * orbital_speeds[i]).sin();
+            planet_positions[i] = Vec3::new(planet_x, 0.0, planet_z);
         }
 
         // Movimiento en el plano horizontal (XZ)
@@ -410,16 +458,79 @@ fn main() {
         if window.is_key_down(Key::D) {
             movement.x += camera_speed;
         }
+
         if movement.magnitude() > 0.0 {
-            camera.move_center(movement);
+            let ship_offset = 15.0;
+            let future_position = camera.eye + movement;
+            let future_ship_position =
+                future_position + (camera.center - future_position).normalize() * ship_offset;
+
+            // Iniciar verificación de colisiones
+            let mut collision = false;
+
+            // Verificar colisión con el sol primero
+            if check_collision(&future_ship_position, &Vec3::new(0.0, 0.0, 0.0), 4.0) {
+                collision = true;
+            }
+
+            // Verificar colisiones con cada planeta
+            if !collision {
+                for (i, planet_pos) in planet_positions.iter().enumerate() {
+                    let planet_scale = planet_scales[i];
+                    if check_collision(&future_ship_position, planet_pos, planet_scale) {
+                        collision = true;
+                        break;
+                    }
+                }
+            }
+
+            // Verificar colisión con la luna
+            if !collision && !planet_positions.is_empty() {
+                let orbit_radius_moon = 2.0;
+                let orbit_speed_moon = 0.01;
+                let moon_x = planet_positions[0].x
+                    + orbit_radius_moon * (time as f32 * orbit_speed_moon).cos();
+                let moon_z = planet_positions[0].z
+                    + orbit_radius_moon * (time as f32 * orbit_speed_moon).sin();
+                let moon_position = Vec3::new(moon_x, 0.0, moon_z);
+
+                if check_collision(&future_position, &moon_position, 0.5) {
+                    collision = true;
+                }
+            }
+
+            // Si no hay colisiones, permitir el movimiento
+            if !collision {
+                camera.move_center(movement);
+            }
         }
 
-        // Movimiento vertical en el eje Y
+        // Movimiento vertical con colisiones
         if window.is_key_down(Key::R) {
-            camera.move_vertical(vertical_speed);
+            let up_movement = Vec3::new(0.0, vertical_speed, 0.0);
+            let future_position = camera.eye + up_movement;
+            let collision = check_collision(&future_position, &Vec3::new(0.0, 0.0, 0.0), 4.0)
+                || planet_positions
+                    .iter()
+                    .enumerate()
+                    .any(|(i, pos)| check_collision(&future_position, pos, planet_scales[i]));
+
+            if !collision {
+                camera.move_vertical(vertical_speed);
+            }
         }
         if window.is_key_down(Key::F) {
-            camera.move_vertical(-vertical_speed);
+            let down_movement = Vec3::new(0.0, -vertical_speed, 0.0);
+            let future_position = camera.eye + down_movement;
+            let collision = check_collision(&future_position, &Vec3::new(0.0, 0.0, 0.0), 4.0)
+                || planet_positions
+                    .iter()
+                    .enumerate()
+                    .any(|(i, pos)| check_collision(&future_position, pos, planet_scales[i]));
+
+            if !collision {
+                camera.move_vertical(-vertical_speed);
+            }
         }
 
         // Rotación de la cámara
@@ -504,61 +615,36 @@ fn main() {
 
         let orbit_visibility_threshold = 10.0;
 
-
         for (i, &radio) in orbital_radii.iter().enumerate() {
             let distance_to_camera = (camera.eye - Vec3::new(0.0, 0.0, 0.0)).magnitude();
-
-            // Renderiza las órbitas solo si la cámara está lejos
-            if distance_to_camera > radio + orbit_visibility_threshold {
-                render_orbit_lines(
-                    &mut framebuffer,
-                    radio,
-                    Color::new(128, 128, 128),
-                    150,
-                    &base_uniforms,
-                );
-            }
 
             let orbital_speed = orbital_speeds[i];
             let planet_x = radio * (time as f32 * orbital_speed).cos();
             let planet_z = radio * (time as f32 * orbital_speed).sin();
             let planet_position = Vec3::new(planet_x, 0.0, planet_z);
 
+            let current_planet_x = planet_position.x;
+            let current_planet_z = planet_position.z;
+
             let planet_scales = vec![1.5, 1.7, 2.5, 3.5, 2.8, 3.3];
             let planet_scale = planet_scales[i];
             let speeds_rotation = vec![0.015, 0.015, 0.025, 0.018, 0.018, 0.016];
             let planet_rotation = time as f32 * speeds_rotation[i];
 
-            let planet_uniforms = Uniforms {
-                model_matrix: create_model_matrix(planet_position, planet_scale, planet_rotation),
-                view_matrix,
-                projection_matrix,
-                viewport_matrix,
-                time,
-                noise: fastnoise_lite::FastNoiseLite::new(),
-            };
-
-            render(
-                &mut framebuffer,
-                &planet_uniforms,
-                &vertex_arrays_sphere,
-                &shaders[i],
-            );
-
-            if i == 0 {
-                let orbit_radius_moon = 2.0;
-                let orbit_speed_moon = 0.01;
-                let moon_x =
-                    planet_position.x + orbit_radius_moon * (time as f32 * orbit_speed_moon).cos();
-                let moon_z =
-                    planet_position.z + orbit_radius_moon * (time as f32 * orbit_speed_moon).sin();
-                let moon_position = Vec3::new(moon_x, 0.0, moon_z);
-
-                let moon_rotation_speed = 0.005;
-                let moon_rotation = time as f32 * moon_rotation_speed;
-
-                let moon_uniforms = Uniforms {
-                    model_matrix: create_model_matrix(moon_position, 0.5, moon_rotation),
+            // Verificar si el planeta está en el frustum
+            if is_in_frustum(
+                &planet_position,
+                planet_scale,
+                &view_matrix,
+                &projection_matrix,
+            ) {
+                // Renderizar planeta
+                let planet_uniforms = Uniforms {
+                    model_matrix: create_model_matrix(
+                        planet_position,
+                        planet_scale,
+                        planet_rotation,
+                    ),
                     view_matrix,
                     projection_matrix,
                     viewport_matrix,
@@ -568,13 +654,64 @@ fn main() {
 
                 render(
                     &mut framebuffer,
-                    &moon_uniforms,
-                    &vertex_arrays_moon,
-                    &ShaderType::Moon,
+                    &planet_uniforms,
+                    &vertex_arrays_sphere,
+                    &shaders[i],
                 );
+
+                // Renderizar órbita solo si la cámara está lo suficientemente lejos
+                if distance_to_camera > radio + orbit_visibility_threshold {
+                    let orbit_scale = 0.1;
+                    if is_in_frustum(
+                        &Vec3::new(0.0, 0.0, 0.0),
+                        radio + orbit_scale,
+                        &view_matrix,
+                        &projection_matrix,
+                    ) {
+                        render_orbit_lines(
+                            &mut framebuffer,
+                            radio,
+                            Color::new(128, 128, 128),
+                            150,
+                            &base_uniforms,
+                        );
+                    }
+                }
+
+                // Renderizar luna solo para el primer planeta
+                if i == 0 {
+                    let orbit_radius_moon = 2.0;
+                    let orbit_speed_moon = 0.01;
+                    let moon_x = current_planet_x
+                        + orbit_radius_moon * (time as f32 * orbit_speed_moon).cos();
+                    let moon_z = current_planet_z
+                        + orbit_radius_moon * (time as f32 * orbit_speed_moon).sin();
+                    let moon_position = Vec3::new(moon_x, 0.0, moon_z);
+
+                    let moon_rotation_speed = 0.005;
+                    let moon_rotation = time as f32 * moon_rotation_speed;
+
+                    // Verificar si la luna está en el frustum antes de renderizarla
+                    if is_in_frustum(&moon_position, 0.5, &view_matrix, &projection_matrix) {
+                        let moon_uniforms = Uniforms {
+                            model_matrix: create_model_matrix(moon_position, 0.5, moon_rotation),
+                            view_matrix,
+                            projection_matrix,
+                            viewport_matrix,
+                            time,
+                            noise: fastnoise_lite::FastNoiseLite::new(),
+                        };
+
+                        render(
+                            &mut framebuffer,
+                            &moon_uniforms,
+                            &vertex_arrays_moon,
+                            &ShaderType::Moon,
+                        );
+                    }
+                }
             }
         }
-
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
             .unwrap();
