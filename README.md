@@ -24,6 +24,7 @@ https://github.com/user-attachments/assets/019f4d80-42fa-46bc-a73d-ab7fa15726f8
 - ⚡ **Optimized Rendering:** Efficient rasterization algorithms ensure smooth performance.
 
 ---
+## How to run
 
 ### Prerequisites
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version).
