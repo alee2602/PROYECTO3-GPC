@@ -31,7 +31,7 @@ pub fn line(a: &Vertex, b: &Vertex) -> Vec<Fragment> {
         fragments.push(Fragment::new(
             x0 as f32, 
             y0 as f32, 
-            Color::new(255, 255, 255), 
+            Color::new(255, 255, 255, 0), 
             z, 
             normal, 
             intensity, 

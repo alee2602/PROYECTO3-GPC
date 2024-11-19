@@ -1,4 +1,4 @@
-use nalgebra_glm::{rotate_vec3, Vec3};
+use nalgebra_glm::Vec3;
 use std::f32::consts::PI;
 
 pub struct Camera {
@@ -18,7 +18,7 @@ impl Camera {
         }
     }
 
-    // Rotación en órbita (ya lo tienes)
+    // Rotación en órbita
     pub fn orbit(&mut self, delta_yaw: f32, delta_pitch: f32) {
         let radius_vector = self.eye - self.center;
         let radius = radius_vector.magnitude();

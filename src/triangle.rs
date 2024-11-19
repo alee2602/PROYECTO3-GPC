@@ -31,7 +31,7 @@ pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex) -> Vec<Fragment> {
 
                 let intensity = dot(&normal, &light_dir).max(0.0);
 
-                let base_color = Color::new(100, 100, 100);
+                let base_color = Color::new(100, 100, 100, 0);
                 let lit_color = base_color * intensity;
 
                 let depth = a.z * w1 + b.z * w2 + c.z * w3;

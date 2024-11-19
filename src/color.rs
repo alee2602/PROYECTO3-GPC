@@ -5,15 +5,16 @@ pub struct Color {
     pub r: u8,
     pub g: u8,
     pub b: u8,
+    pub a: u8,
 }
 
 impl Color {
-    pub const fn new(r: u8, g: u8, b: u8) -> Self {
-        Color { r, g, b }
+    pub const fn new(r: u8, g: u8, b: u8, a:u8) -> Self {
+        Color { r, g, b, a }
     }
 
     pub const fn black() -> Self {
-        Color { r: 0, g: 0, b: 0 }
+        Color { r: 0, g: 0, b: 0, a: 0}
     }
 
     pub fn to_hex(&self) -> u32 {
@@ -28,6 +29,7 @@ impl Color {
             r: (self.r as f32 + (other.r as f32 - self.r as f32) * t).round() as u8,
             g: (self.g as f32 + (other.g as f32 - self.g as f32) * t).round() as u8,
             b: (self.b as f32 + (other.b as f32 - self.b as f32) * t).round() as u8,
+            a: (self.a as f32 + (other.a as f32 - self.a as f32) * t).round() as u8,
         }
     }
     
@@ -36,6 +38,7 @@ impl Color {
             r: self.r.max(min_value),
             g: self.g.max(min_value),
             b: self.b.max(min_value),
+            a: self.a.max(min_value),
         }
     }
 }
@@ -50,6 +53,7 @@ impl Add for Color {
             r: self.r.saturating_add(other.r),
             g: self.g.saturating_add(other.g),
             b: self.b.saturating_add(other.b),
+            a: self.a.saturating_add(other.a),
         }
     }
 }
@@ -64,6 +68,7 @@ impl Mul<f32> for Color {
             r: (self.r as f32 * scalar).clamp(0.0, 255.0) as u8,
             g: (self.g as f32 * scalar).clamp(0.0, 255.0) as u8,
             b: (self.b as f32 * scalar).clamp(0.0, 255.0) as u8,
+            a: (self.a as f32 * scalar).clamp(0.0, 255.0) as u8,
         }
     }
 }

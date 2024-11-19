@@ -1,10 +1,10 @@
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{look_at, perspective, Mat4, Vec3, Vec4};
-use std::f32::consts::PI;
-use std::time::Duration;
 use rodio::{source::Source, Decoder, OutputStream, Sink};
+use std::f32::consts::PI;
 use std::fs::File;
 use std::io::BufReader;
+use std::time::Duration;
 
 mod camera;
 mod color;
@@ -109,9 +109,7 @@ fn render_skybox(
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
 
-    // Usar una esfera más grande para el skybox y asegurar que está detrás de todo
-    let sky_sphere = Sphere::new(camera.eye, 2000.0); // Radio más grande
-
+    let sky_sphere = Sphere::new(camera.eye, 2000.0);
     for y in 0..framebuffer.height {
         for x in 0..framebuffer.width {
             let ndc_x = (x as f32 / width) * 2.0 - 1.0;
@@ -124,7 +122,6 @@ fn render_skybox(
             if intersect.hit {
                 let color = skybox_texture.get_color(intersect.uv.0, intersect.uv.1);
                 framebuffer.set_current_color(color.to_hex());
-                // Usar la máxima profundidad posible para el skybox
                 framebuffer.point(x, y, f32::MAX);
             }
         }
@@ -173,7 +170,6 @@ fn render(
         if x < framebuffer.width && y < framebuffer.height {
             let z_index = y * framebuffer.width + x;
 
-            // Comprobar z-buffer con un pequeño bias
             if fragment.depth <= framebuffer.zbuffer[z_index] + 0.0001 {
                 let shaded_color = fragment_shader(&fragment, uniforms, shader_type);
                 framebuffer.set_current_color(shaded_color.to_hex());
@@ -245,15 +241,12 @@ fn line_with_thickness(
     let dx = dx / distance;
     let dy = dy / distance;
 
-    // Dibujar la línea principal
     line_with_depth(framebuffer, x1, y1, x2, y2, z1, z2);
 
-    // Para líneas muy delgadas, solo se dibuja la línea principal
     if thickness <= 1.0 {
         return;
     }
 
-    // Dibujar líneas adicionales para el grosor
     for offset in 1..=(thickness as i32) {
         let offset = offset as f32 * 0.5;
 
@@ -310,8 +303,18 @@ fn render_orbit_lines(
     color: Color,
     segments: usize,
     uniforms: &Uniforms,
+    visibility_factor: f32,
 ) {
-    framebuffer.set_current_color(color.to_hex());
+    let line_thickness = 0.001 * visibility_factor.max(0.1); 
+
+    let adjusted_color = Color::new(
+        color.r,
+        color.g,
+        color.b,
+        (visibility_factor * 255.0) as u8, 
+    );
+
+    framebuffer.set_current_color(adjusted_color.to_hex());
 
     for i in 0..segments {
         let angle1 = 2.0 * PI * (i as f32) / (segments as f32);
@@ -361,7 +364,6 @@ fn render_orbit_lines(
             && screen_x2 < framebuffer.width
             && screen_y2 < framebuffer.height
         {
-            // Usar los valores z de NDC para la profundidad
             line_with_thickness(
                 framebuffer,
                 screen_x1,
@@ -370,9 +372,19 @@ fn render_orbit_lines(
                 screen_y2,
                 ndc_pos1.z,
                 ndc_pos2.z,
-                0.001,
+                line_thickness, 
             );
         }
+    }
+}
+
+fn calculate_visibility_factor(distance: f32, min_dist: f32, max_dist: f32) -> f32 {
+    if distance < min_dist {
+        0.0
+    } else if distance > max_dist {
+        1.0
+    } else {
+        (distance - min_dist) / (max_dist - min_dist)
     }
 }
 
@@ -381,11 +393,16 @@ fn main() {
         OutputStream::try_default().expect("No se pudo inicializar el stream de audio.");
     let sink = Sink::try_new(&stream_handle).expect("No se pudo crear el sink de audio.");
 
-    let file = File::open("assets/audio/ewtrtw.wav").expect("No se pudo abrir el archivo de música.");
+    let file =
+        File::open("assets/audio/ewtrtw.wav").expect("No se pudo abrir el archivo de música.");
     let source =
         Decoder::new(BufReader::new(file)).expect("No se pudo decodificar el archivo de música.");
 
     sink.append(source.repeat_infinite());
+
+    sink.set_volume(0.2);
+
+
     sink.play();
 
     let window_width = 1000;
@@ -424,8 +441,8 @@ fn main() {
     let viewport_matrix =
         create_viewport_matrix(framebuffer_width as f32, framebuffer_height as f32);
 
-    let orbital_radii = vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0];
-    let orbital_speeds = vec![0.04, 0.02, 0.01, 0.009, 0.008, 0.007];
+    let orbital_radii = vec![15.0, 25.0, 35.0, 45.0, 55.0, 65.0];
+    let orbital_speeds = vec![0.04, 0.017, 0.014, 0.03, 0.010, 0.009];
     let shaders = vec![
         ShaderType::RockyPlanet,
         ShaderType::RockyPlanetVariant,
@@ -443,7 +460,7 @@ fn main() {
     let skybox_texture = Texture::new("assets/textures/sky.jpg");
 
     let mut time = 0;
-    let planet_scales = vec![1.5, 1.7, 2.5, 3.5, 2.8, 3.3];
+    let planet_scales = vec![2.5, 3.0, 4.0, 5.0, 4.5, 5.0];
     let mut planet_positions = vec![Vec3::zeros(); orbital_radii.len()];
 
     while window.is_open() {
@@ -479,7 +496,6 @@ fn main() {
             let future_ship_position =
                 future_position + (camera.center - future_position).normalize() * ship_offset;
 
-            // Iniciar verificación de colisiones
             let mut collision = false;
 
             // Verificar colisión con el sol primero
@@ -512,8 +528,6 @@ fn main() {
                     collision = true;
                 }
             }
-
-            // Si no hay colisiones, permitir el movimiento
             if !collision {
                 camera.move_center(movement);
             }
@@ -571,6 +585,9 @@ fn main() {
 
         let view_matrix = look_at(&camera.eye, &camera.center, &camera.up);
 
+        let distance_to_center = (camera.eye - Vec3::new(0.0, 0.0, 0.0)).magnitude();
+        let visibility_factor = calculate_visibility_factor(distance_to_center, 30.0, 70.0);
+
         time += 1;
         framebuffer.clear();
         for z in framebuffer.zbuffer.iter_mut() {
@@ -613,7 +630,7 @@ fn main() {
 
         // Renderizado del sol
         let sun_uniforms = Uniforms {
-            model_matrix: create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 5.0, sun_rotation),
+            model_matrix: create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 10.0, sun_rotation),
             view_matrix,
             projection_matrix,
             viewport_matrix,
@@ -640,10 +657,10 @@ fn main() {
             let current_planet_x = planet_position.x;
             let current_planet_z = planet_position.z;
 
-            let planet_scales = vec![1.5, 1.7, 2.5, 3.5, 2.8, 3.3];
+            let planet_scales = vec![2.5, 3.0, 4.0, 5.0, 4.5, 5.0];
             let planet_scale = planet_scales[i];
-            let speeds_rotation = vec![0.015, 0.015, 0.025, 0.018, 0.018, 0.016];
-            let to_sun = Vec3::new(0.0, 0.0, 0.0) - planet_position; // Vector al Sol
+            let speeds_rotation = vec![0.035, 0.035, 0.038, 0.028, 0.028, 0.026];
+            let to_sun = Vec3::new(0.0, 0.0, 0.0) - planet_position;
             let alignment_angle = to_sun.normalize().dot(&Vec3::y_axis());
             let planet_rotation = alignment_angle + (time as f32 * speeds_rotation[i]);
 
@@ -687,9 +704,10 @@ fn main() {
                         render_orbit_lines(
                             &mut framebuffer,
                             radio,
-                            Color::new(128, 128, 128),
+                            Color::new(128, 128, 128, 255),
                             150,
                             &base_uniforms,
+                            visibility_factor
                         );
                     }
                 }
@@ -707,7 +725,6 @@ fn main() {
                     let moon_rotation_speed = 0.005;
                     let moon_rotation = time as f32 * moon_rotation_speed;
 
-                    // Verificar si la luna está en el frustum antes de renderizarla
                     if is_in_frustum(&moon_position, 0.5, &view_matrix, &projection_matrix) {
                         let moon_uniforms = Uniforms {
                             model_matrix: create_model_matrix(moon_position, 0.5, moon_rotation),
@@ -734,3 +751,4 @@ fn main() {
         std::thread::sleep(frame_delay);
     }
 }
+

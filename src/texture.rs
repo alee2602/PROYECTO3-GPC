@@ -18,6 +18,6 @@ impl Texture {
         let y = (v * height as f32) as u32 % height;
         let pixel = self.image.get_pixel(x, y);
 
-        Color::new(pixel[0], pixel[1], pixel[2])  
+        Color::new(pixel[0], pixel[1], pixel[2], pixel[3])  
     }
 }

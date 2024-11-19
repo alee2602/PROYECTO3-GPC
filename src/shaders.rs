@@ -63,9 +63,9 @@ pub fn fragment_shader(fragment: &Fragment, uniforms: &Uniforms, shader_type: &S
 }
 
 pub fn blue_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let base_blue = Color::new(30, 30, 100); // Azul oscuro base
-    let highlight_blue = Color::new(70, 130, 180); // Azul claro para iluminación
-    let shadow_black = Color::new(0, 0, 0); // Negro para sombras
+    let base_blue = Color::new(30, 30, 100,0); // Azul oscuro base
+    let highlight_blue = Color::new(70, 130, 180, 0); // Azul claro para iluminación
+    let shadow_black = Color::new(0, 0, 0, 0); // Negro para sombras
 
     // Gradiente basado en la altura
     let gradient_factor = (fragment.position.y / 10.0).clamp(0.0, 1.0);
@@ -80,16 +80,16 @@ pub fn blue_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
     base_blue
         .lerp(&highlight_blue, gradient_factor) // Gradiente altura
         .lerp(&shadow_black, 1.0 - brightness) // Sombras según la normal
-        .lerp(&Color::new(50, 50, 100), time_factor * 0.2) // Efecto dinámico
+        .lerp(&Color::new(50, 50, 100, 0), time_factor * 0.2) // Efecto dinámico
 }
 
 pub fn moon_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
     let position = fragment.vertex_position;
     let time = uniforms.time as f32 * 0.001;
 
-    let base_color = Color::new(180, 180, 180);  
-    let crater_color = Color::new(100, 100, 100);
-    let dust_color = Color::new(150, 150, 150);   
+    let base_color = Color::new(180, 180, 180, 0);  
+    let crater_color = Color::new(100, 100, 100, 0);
+    let dust_color = Color::new(150, 150, 150, 0);   
 
     let craters = uniforms.noise.get_noise_3d(
         position.x * 150.0,
@@ -240,6 +240,7 @@ pub fn gas_giant_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
         (final_color.x * 255.0) as u8,
         (final_color.y * 255.0) as u8,
         (final_color.z * 255.0) as u8,
+        0
     )
 }
 
@@ -347,13 +348,14 @@ pub fn cold_gas_giant_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color 
         (final_color.x * 255.0) as u8,
         (final_color.y * 255.0) as u8,
         (final_color.z * 255.0) as u8,
+        0
     )
 }
 
 pub fn solar_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let bright_color = Color::new(255, 240, 70);
-    let mid_color = Color::new(255, 100, 0);
-    let dark_color = Color::new(70, 10, 0);
+    let bright_color = Color::new(255, 240, 70, 0);
+    let mid_color = Color::new(255, 100, 0, 0);
+    let dark_color = Color::new(70, 10, 0, 0);
 
     let position = Vec3::new(
         fragment.vertex_position.x,
@@ -415,9 +417,9 @@ pub fn solar_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
 }
 
 pub fn rocky_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let bright_color = Color::new(230, 120, 70);
-    let mid_color = Color::new(140, 70, 40);
-    let dark_color = Color::new(30, 10, 5);
+    let bright_color = Color::new(230, 120, 70, 0);
+    let mid_color = Color::new(140, 70, 40, 0);
+    let dark_color = Color::new(30, 10, 5, 0);
 
     let position = Vec3::new(
         fragment.vertex_position.x,
@@ -507,9 +509,9 @@ pub fn rocky_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
 }
 
 pub fn rocky_planet_variant_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let bright_color = Color::new(237, 201, 175);  
-    let mid_color = Color::new(193, 154, 107);  
-    let dark_color = Color::new(139, 108, 66);  
+    let bright_color = Color::new(237, 201, 175, 0);  
+    let mid_color = Color::new(193, 154, 107, 0);  
+    let dark_color = Color::new(139, 108, 66, 0);  
 
 
     let position = Vec3::new(
@@ -600,9 +602,9 @@ pub fn rocky_planet_variant_shader(fragment: &Fragment, uniforms: &Uniforms) -> 
 }
 
 pub fn alien_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let ocean_color = Color::new(25, 25, 112);
-    let flora_color = Color::new(110, 62, 136);
-    let alien_color = Color::new(13, 246, 243);
+    let ocean_color = Color::new(25, 25, 112, 0);
+    let flora_color = Color::new(110, 62, 136, 0);
+    let alien_color = Color::new(13, 246, 243, 0);
 
     let position = Vec3::new(
         fragment.vertex_position.x,
@@ -707,7 +709,7 @@ pub fn alien_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
 }
 
 pub fn glacial_textured_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let ice_blue = Color::new(173, 216, 230);  
+    let ice_blue = Color::new(173, 216, 230, 0);  
 
     let position = Vec3::new(
         fragment.vertex_position.x,
